@@ -1,0 +1,36 @@
+# Environment
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project runtime artifacts (not committed — reproduced by pipeline)
+cache/
+data/raw/
+data/processed/
+data/analysis/
+outputs/
+
+# Sentinel files
+data/**/.*.json
+**/.*.complete
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
