@@ -1,0 +1,247 @@
+# =============================================================================
+# Billboard Cultural Mood Analysis — Project Configuration
+# config/project_config.yaml
+#
+# This is the single source of truth for all pipeline parameters.
+# All tunable values live here. No magic numbers in source code.
+#
+# Loaded by: src/pipeline/config_loader.py → ProjectConfig (Pydantic model)
+# Accessed via: config.<section>.<key> throughout all pipeline modules
+# =============================================================================
+
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+
+dataset:
+
+  # Full historical range (Billboard Hot 100 launched August 4, 1958)
+  sample_start_year: 1958
+  sample_end_year:   2025
+
+  # Set to a decade label (e.g. "1980s") to restrict all stages to one decade.
+  # null means no filter — process all decades.
+  decade_filter: null
+
+  # Canonical decade bucket definitions.
+  # 1960s* is non-standard: covers 12 years (1958–1969) due to chart launch date.
+  # All other buckets are standard 10-year spans.
+  # These labels must match DECADE_ORDER in src/visualization/_design_system.py.
+  decade_buckets:
+    - label:        "1960s*"
+      start:        1958
+      end:          1969
+      non_standard: true
+
+    - label:        "1970s"
+      start:        1970
+      end:          1979
+      non_standard: false
+
+    - label:        "1980s"
+      start:        1980
+      end:          1989
+      non_standard: false
+
+    - label:        "1990s"
+      start:        1990
+      end:          1999
+      non_standard: false
+
+    - label:        "2000s"
+      start:        2000
+      end:          2009
+      non_standard: false
+
+    - label:        "2010s"
+      start:        2010
+      end:          2019
+      non_standard: false
+
+    - label:        "2020s"
+      start:        2020
+      end:          2025
+      non_standard: false
+
+
+# ── Lyrics ────────────────────────────────────────────────────────────────────
+
+lyrics:
+
+  # Directory where per-song JSON cache files are stored.
+  # Each file is named {song_id}.json
+  cache_dir: "cache/lyrics"
+
+  # Songs with fewer tokens than this threshold after cleaning are marked
+  # lyrics_quality = "missing" and excluded from scored analytical layers.
+  # Songs with tokens between this value and the partial_threshold are
+  # marked lyrics_quality = "partial".
+  min_token_threshold: 50
+
+  # Songs with token counts above min but below this value are "partial".
+  # Songs at or above this value are "full".
+  partial_token_threshold: 150
+
+  # Seconds to wait between consecutive Genius API requests.
+  # Increase if you observe rate-limit errors (HTTP 429).
+  genius_sleep_time: 0.5
+
+  # Maximum number of retry attempts for a failed Genius lyrics fetch.
+  genius_max_retries: 3
+
+
+# ── Preprocessing ─────────────────────────────────────────────────────────────
+
+preprocessing:
+
+  # Tier 1 chorus detection: regex pattern for section tag matching.
+  # Matched case-insensitively against cleaned lyrics.
+  # Captures tags like [Chorus], [Hook], [Refrain], [Chorus 1], etc.
+  chorus_tier1_tag_pattern: "\\[(chorus|hook|refrain)(\\s+\\d+)?\\]"
+
+  # Tier 2 chorus detection: minimum number of times a line or phrase
+  # must appear verbatim (after normalization) to be considered a chorus.
+  chorus_tier2_min_repetitions: 3
+
+  # Tier 2 minimum token count for a repeated line to qualify as a chorus.
+  # Prevents short filler lines ("yeah yeah") from triggering detection.
+  chorus_tier2_min_tokens: 6
+
+  # Tier 3 chorus detection: GPT model to use when Tiers 1 and 2 both fail.
+  chorus_tier3_model: "gpt-4o"
+
+  # Maximum tokens in the chorus text passed to downstream analysis.
+  # Chorus text is truncated to this limit before scoring.
+  chorus_max_tokens: 200
+
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
+
+analysis:
+
+  # Energy level binning.
+  # The VADER compound score (range -1.0 to +1.0) is mapped to an integer
+  # energy level 1–5 using these bin edges.
+  # Values below bins[0]  → level 1
+  # Values in [bins[0], bins[1]) → level 2
+  # etc.
+  energy_level:
+    bins: [0.2, 0.4, 0.6, 0.8]
+
+  # Emotion classification model.
+  # Must be a Hugging Face model ID compatible with the
+  # text-classification pipeline and Ekman 7-class output labels.
+  emotion_model: "j-hartmann/emotion-english-distilroberta-base"
+
+  # Emotion classification batch size (songs processed per inference call).
+  emotion_batch_size: 16
+
+  # Theme classification model.
+  # Must be a Hugging Face zero-shot classification model.
+  theme_model: "facebook/bart-large-mnli"
+
+  # Minimum confidence score (0.0–1.0) for a theme to be assigned.
+  # Themes with scores below this threshold are excluded from the output.
+  theme_threshold: 0.40
+
+  # Theme batch size (songs processed per BART inference call).
+  theme_batch_size: 8
+
+  # Canonical 12-class theme taxonomy.
+  # These labels are passed directly to the BART-MNLI zero-shot classifier.
+  # Order determines tie-breaking behavior when scores are equal.
+  theme_taxonomy:
+    - love
+    - heartbreak
+    - party_celebration
+    - identity
+    - struggle
+    - rebellion
+    - wealth_success
+    - friendship
+    - nostalgia
+    - self_reflection
+    - empowerment
+    - unity
+
+  # Minimum proportion of full-quality songs that must receive non-null
+  # scores across sentiment, emotion, themes, and energy_level before the
+  # contrast_metrics stage will proceed. If coverage falls below this
+  # threshold, the pipeline raises RuntimeError and halts.
+  coverage_gate_threshold: 0.85
+
+  # GPT model used for Jungian psychological scoring (Stage 9).
+  jungian_model: "gpt-4o"
+
+  # Number of songs submitted per GPT-4o API call in Jungian scoring.
+  # Lower values reduce token usage per call but increase total API calls.
+  jungian_batch_size: 5
+
+  # Seconds to sleep between consecutive Jungian batch API calls.
+  # Increase if you observe OpenAI rate-limit errors.
+  jungian_inter_batch_sleep: 1.0
+
+  # Maximum number of retry attempts for a failed Jungian batch or
+  # individual song scoring call before marking the song as "unclassified".
+  jungian_max_retries: 3
+
+  # Valid Jungian stage labels. Any GPT-4o response containing a jung_stage
+  # value not in this list will fail _validate_record() and trigger a retry.
+  jungian_valid_stages:
+    - shadow
+    - persona
+    - anima_animus
+    - integration
+    - transcendence
+    - unclassified
+
+  # Valid range for development_score (integer 1–7).
+  jungian_dev_score_min: 1
+  jungian_dev_score_max: 7
+
+
+# ── Cultural Metrics ──────────────────────────────────────────────────────────
+
+cultural_metrics:
+
+  # Normalization strategy for cultural_resonance_score.
+  # "minmax_within_decade" normalizes each song's raw cosine similarity
+  # score relative to the min and max within its own decade bucket.
+  # This ensures scores are always in [0.0, 1.0] and comparable within
+  # a decade but not directly comparable across decades.
+  normalization: "minmax_within_decade"
+
+  # Feature vector components used for cosine similarity computation.
+  # These must correspond to columns present in layer2_full_analysis.csv.
+  feature_vector:
+    - sentiment_score
+    - energy_level
+    - themes_tfidf
+
+  # Number of top resonance songs stored per decade in decade_cmi.csv.
+  top_resonance_songs_per_decade: 5
+
+
+# ── Output ────────────────────────────────────────────────────────────────────
+
+output:
+
+  # Root output directory for all generated artifacts.
+  output_dir: "outputs"
+
+  # Whether to export charts as PNG files during the visualization stage.
+  save_visualizations: true
+
+  # Image format for chart export. "png" is the only tested format.
+  # Kaleido also supports "svg", "pdf", "webp" — use at your own risk.
+  visualization_format: "png"
+
+  # Plotly image export scale factor.
+  # 2.0 produces high-DPI images (2× the base resolution).
+  # Use 1.0 for faster exports during development.
+  visualization_scale: 2.0
+
+  # Report output format. Only "html" is currently supported.
+  report_format: "html"
+
+  # Console log verbosity. One of: DEBUG, INFO, WARNING, ERROR.
+  log_level: "INFO"
