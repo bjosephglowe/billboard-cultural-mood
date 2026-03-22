@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import pandera as pa
+import pandera as pd
 import pandera.errors  # force submodule registration
 from loguru import logger
 from pandera import Check, Column, DataFrameSchema
@@ -209,7 +210,7 @@ layer2_sentiment_schema = DataFrameSchema(
             nullable=True,
         ),
         "energy_level": Column(
-            int,
+            "Int64",
             Check.isin(VALID_ENERGY_LEVELS),
             nullable=True,
         ),
@@ -314,7 +315,7 @@ layer4_schema = DataFrameSchema(
             nullable=True,
         ),
         "energy_level": Column(
-            int,
+            "Int64",
             Check.isin(VALID_ENERGY_LEVELS),
             nullable=True,
         ),
