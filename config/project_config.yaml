@@ -9,14 +9,12 @@
 # Accessed via: config.<section>.<key> throughout all pipeline modules
 # =============================================================================
 
-
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
 dataset:
-
   # Full historical range (Billboard Hot 100 launched August 4, 1958)
   sample_start_year: 1958
-  sample_end_year:   2025
+  sample_end_year: 2025
 
   # Set to a decade label (e.g. "1980s") to restrict all stages to one decade.
   # null means no filter — process all decades.
@@ -27,46 +25,44 @@ dataset:
   # All other buckets are standard 10-year spans.
   # These labels must match DECADE_ORDER in src/visualization/_design_system.py.
   decade_buckets:
-    - label:        "1960s*"
-      start:        1958
-      end:          1969
+    - label: "1960s*"
+      start: 1958
+      end: 1969
       non_standard: true
 
-    - label:        "1970s"
-      start:        1970
-      end:          1979
+    - label: "1970s"
+      start: 1970
+      end: 1979
       non_standard: false
 
-    - label:        "1980s"
-      start:        1980
-      end:          1989
+    - label: "1980s"
+      start: 1980
+      end: 1989
       non_standard: false
 
-    - label:        "1990s"
-      start:        1990
-      end:          1999
+    - label: "1990s"
+      start: 1990
+      end: 1999
       non_standard: false
 
-    - label:        "2000s"
-      start:        2000
-      end:          2009
+    - label: "2000s"
+      start: 2000
+      end: 2009
       non_standard: false
 
-    - label:        "2010s"
-      start:        2010
-      end:          2019
+    - label: "2010s"
+      start: 2010
+      end: 2019
       non_standard: false
 
-    - label:        "2020s"
-      start:        2020
-      end:          2025
+    - label: "2020s"
+      start: 2020
+      end: 2025
       non_standard: false
-
 
 # ── Lyrics ────────────────────────────────────────────────────────────────────
 
 lyrics:
-
   # Directory where per-song JSON cache files are stored.
   # Each file is named {song_id}.json
   cache_dir: "cache/lyrics"
@@ -88,11 +84,9 @@ lyrics:
   # Maximum number of retry attempts for a failed Genius lyrics fetch.
   genius_max_retries: 3
 
-
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
 preprocessing:
-
   # Tier 1 chorus detection: regex pattern for section tag matching.
   # Matched case-insensitively against cleaned lyrics.
   # Captures tags like [Chorus], [Hook], [Refrain], [Chorus 1], etc.
@@ -113,11 +107,9 @@ preprocessing:
   # Chorus text is truncated to this limit before scoring.
   chorus_max_tokens: 200
 
-
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
 analysis:
-
   # Energy level binning.
   # The VADER compound score (range -1.0 to +1.0) is mapped to an integer
   # energy level 1–5 using these bin edges.
@@ -198,11 +190,9 @@ analysis:
   jungian_dev_score_min: 1
   jungian_dev_score_max: 7
 
-
 # ── Cultural Metrics ──────────────────────────────────────────────────────────
 
 cultural_metrics:
-
   # Normalization strategy for cultural_resonance_score.
   # "minmax_within_decade" normalizes each song's raw cosine similarity
   # score relative to the min and max within its own decade bucket.
@@ -220,11 +210,9 @@ cultural_metrics:
   # Number of top resonance songs stored per decade in decade_cmi.csv.
   top_resonance_songs_per_decade: 5
 
-
 # ── Output ────────────────────────────────────────────────────────────────────
 
 output:
-
   # Root output directory for all generated artifacts.
   output_dir: "outputs"
 
