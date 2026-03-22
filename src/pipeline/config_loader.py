@@ -355,3 +355,32 @@ def sentinel_config_matches(sentinel_path: Path, current_config: ProjectConfig) 
         return False
 
     return True
+
+
+def write_sentinel(path: Path, stage: str, config: "ProjectConfig") -> None:
+    """
+    Write a sentinel file recording the stage name, completion timestamp,
+    and config_hash of the run that produced the current output.
+
+    The sentinel is used by sentinel_config_matches() on subsequent runs
+    to determine whether the stage can be safely skipped.
+
+    Parameters
+    ----------
+    path   : Path   — sentinel file path (e.g. data/processed/.billboard_complete)
+    stage  : str    — human-readable stage label (e.g. "BILLBOARD")
+    config : ProjectConfig — active config; its hash is embedded in the sentinel
+    """
+    import json
+    from datetime import datetime, timezone
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "stage": stage,
+        "config_hash": config_hash(config),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path.write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )

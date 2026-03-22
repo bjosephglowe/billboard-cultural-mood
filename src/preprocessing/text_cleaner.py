@@ -20,14 +20,14 @@ Operations performed (in order)
 
 Perspective detection
 ----------------------
-Assigns one of: "first_person" | "second_person" | "third_person" | "mixed"
+Assigns one of: "first_person" | "second_person" | "third_person" | "abstract"
 
 Heuristic:
     - Count 1st-person pronouns  : i, me, my, mine, myself, we, us, our
     - Count 2nd-person pronouns  : you, your, yours, yourself
     - Count 3rd-person pronouns  : he, she, they, him, her, his, their, them
     - Dominant category wins if its share >= PERSPECTIVE_DOMINANCE_THRESHOLD (0.60)
-    - Otherwise: "mixed"
+    - Otherwise: "abstract"
 
 Idempotency
 -----------
@@ -38,15 +38,19 @@ Output schema
 -------------
 See src/pipeline/schemas.py → cleaned_schema.
 
-    song_id           : str
-    title             : str
-    artist            : str
-    decade            : str
-    lyrics_clean      : str
-    lyrics_quality    : str   — "full" | "partial"  (missing excluded)
-    token_count       : Int64
-    genius_url        : str
-    narrative_perspective : str
+      song_id               : str
+      song_title            : str
+      artist                : str
+      year                  : int
+      decade                : str
+      lyrics_clean          : str
+      lyrics_verse_only     : str
+      token_count           : int
+      lyrics_quality        : str   — "full" | "partial"
+      narrative_perspective : str   — "first_person" | "second_person" |
+                                      "third_person" | "abstract"
+      has_section_tags      : bool
+      section_count         : int
 """
 
 from __future__ import annotations
@@ -174,30 +178,48 @@ def run(config: ProjectConfig) -> dict:
     )
     df["token_count"] = pd.array(df["token_count"].tolist(), dtype=pd.Int64Dtype())
 
+    # ── Add columns required by cleaned_schema ───────────────────────────────
+    df["has_section_tags"] = df["lyrics_clean"].apply(
+        lambda t: bool(re.search(r"\[.+?\]", t)) if isinstance(t, str) else False
+    )
+    df["section_count"] = df["lyrics_clean"].apply(
+        lambda t: len(re.findall(r"\[.+?\]", t)) if isinstance(t, str) else 0
+    )
+    df["lyrics_verse_only"] = df["lyrics_clean"].apply(_extract_verse_only)
+
     # ── Propagate decade from metadata if missing ────────────────────────────
     # lyrics_raw.csv may have an empty decade column — join from metadata
-    if df["decade"].eq("").all() or df["decade"].isna().all():
-        meta_path = _PROJECT_ROOT / "data" / "processed" / "song_metadata.csv"
-        if meta_path.exists():
-            meta = pd.read_csv(meta_path)[["song_id", "decade"]]
-            df = df.drop(columns=["decade"]).merge(meta, on="song_id", how="left")
-            df["decade"] = df["decade"].fillna("")
+
+    # Join decade AND year from song_metadata.csv
+    meta_path = _PROJECT_ROOT / "data" / "processed" / "song_metadata.csv"
+    if meta_path.exists():
+        meta = pd.read_csv(meta_path)[["song_id", "decade", "year"]]
+        df = df.drop(columns=["decade", "year"], errors="ignore")
+        df = df.merge(meta, on="song_id", how="left")
+        df["decade"] = df["decade"].fillna("")
+        df["year"] = df["year"].fillna(0).astype(int)
+    else:
+        df["year"] = 0
 
     # ── Drop raw lyrics column — not needed downstream ───────────────────────
     df = df.drop(columns=["lyrics_raw"], errors="ignore")
 
     # ── Reorder columns to match schema ─────────────────────────────────────
+    # — matches cleaned_schema column set exactly:
     df = df[
         [
             "song_id",
-            "title",
+            "song_title",
             "artist",
+            "year",
             "decade",
             "lyrics_clean",
-            "lyrics_quality",
+            "lyrics_verse_only",
             "token_count",
-            "genius_url",
+            "lyrics_quality",
             "narrative_perspective",
+            "has_section_tags",
+            "section_count",
         ]
     ]
 
@@ -261,6 +283,41 @@ def _clean_lyrics(text: str | float) -> str:
     return "\n".join(lines)
 
 
+def _extract_verse_only(text: str | float) -> str:
+    """
+    Return lyrics with chorus, bridge, hook, and non-verse sections removed.
+
+    Strips all lines between a non-verse section tag and the next section
+    tag (or end of string). Returns full text if no section tags are present.
+    Non-verse tags: chorus, bridge, hook, refrain, outro, intro.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return ""
+
+    non_verse_re = re.compile(
+        r"^\[(chorus|bridge|hook|refrain|outro|intro)[^\]]*\]$",
+        re.IGNORECASE,
+    )
+    any_tag_re = re.compile(r"^\[.+\]$", re.IGNORECASE)
+
+    lines = text.splitlines()
+    result: list[str] = []
+    skip = False
+
+    for line in lines:
+        stripped = line.strip()
+        if non_verse_re.match(stripped):
+            skip = True
+            continue
+        if any_tag_re.match(stripped) and skip:
+            skip = False
+            continue
+        if not skip:
+            result.append(stripped)
+
+    return "\n".join(l for l in result if l)
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Perspective detection
 # ═════════════════════════════════════════════════════════════════════════════
@@ -270,17 +327,17 @@ def _detect_perspective(text: str | float) -> str:
     """
     Classify the narrative perspective of a lyrics string.
 
-    Returns one of: "first_person" | "second_person" | "third_person" | "mixed"
+    Returns one of: "first_person" | "second_person" | "third_person" | "abstract"
 
     Algorithm:
         1. Tokenise to lowercase words (letters only)
         2. Count pronoun hits per category
-        3. If total pronoun count is 0 → "mixed" (indeterminate)
+        3. If total pronoun count is 0 → "abstract" (indeterminate)
         4. If dominant category share >= PERSPECTIVE_DOMINANCE_THRESHOLD → that label
-        5. Otherwise → "mixed"
+        5. Otherwise → "abstract"
     """
     if not isinstance(text, str) or not text.strip():
-        return "mixed"
+        return "abstract"
 
     words = re.findall(r"[a-z]+", text.lower())
 
@@ -290,7 +347,7 @@ def _detect_perspective(text: str | float) -> str:
     total = first + second + third
 
     if total == 0:
-        return "mixed"
+        return "abstract"
 
     shares = {
         "first_person": first / total,
@@ -302,7 +359,7 @@ def _detect_perspective(text: str | float) -> str:
 
     if share >= _PERSPECTIVE_DOMINANCE_THRESHOLD:
         return dominant
-    return "mixed"
+    return "abstract"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
