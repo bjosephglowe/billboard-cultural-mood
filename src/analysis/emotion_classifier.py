@@ -48,8 +48,10 @@ Output schema
 See src/pipeline/schemas.py → layer2_emotion_schema.
 
     song_id                : str
-    dominant_emotion       : str    — one of the 7 Ekman labels
-    dominant_emotion_score : float  — probability [0.0, 1.0]
+    emotional_tone         : str   — dominant Ekman label (required by layer2_emotion_schema)
+    chorus_sentiment_score : float — nullable; populated by contrast_metrics join
+    chorus_emotional_tone  : str   — proxy from emotional_tone; nullable
+    dominant_emotion_score : float — probability of dominant class [0.0, 1.0]
     emotion_anger          : float
     emotion_disgust        : float
     emotion_fear           : float
@@ -124,7 +126,7 @@ def run(config: ProjectConfig) -> dict:
         df = pd.read_csv(_OUTPUT_PATH)
         return {
             "songs_classified": len(df),
-            "dominant_emotion_dist": df["dominant_emotion"].value_counts().to_dict(),
+            "dominant_emotion_dist": df["emotional_tone"].value_counts().to_dict(),
             "output_path": _OUTPUT_PATH,
             "skipped": True,
         }
@@ -160,13 +162,12 @@ def run(config: ProjectConfig) -> dict:
     df.to_csv(_OUTPUT_PATH, index=False)
     write_sentinel(_SENTINEL, stage="EMOTION", config=config)
 
-    dist = df["dominant_emotion"].value_counts().to_dict()
+    dist = df["emotional_tone"].value_counts().to_dict()
     logger.info(
         "Stage 6 [EMOTION] — complete. distribution: %s → %s",
         dist,
         _OUTPUT_PATH,
     )
-
     return {
         "songs_classified": len(df),
         "dominant_emotion_dist": dist,
@@ -272,8 +273,14 @@ def _build_dataframe(song_ids: list[str], scores_list: list[dict]) -> pd.DataFra
         dominant_score = scores[dominant]
         rows.append(
             {
+                # -- Required by layer2_emotion_schema
                 "song_id": song_id,
-                "dominant_emotion": dominant,
+                "emotional_tone": dominant,  # renamed from dominant_emotion
+                "chorus_sentiment_score": None,  # populated by contrast_metrics
+                # join; nullable=True in schema
+                "chorus_emotional_tone": dominant,  # best available proxy at this
+                # stage; overwritten downstream
+                # ── Extra cols — pass through strict=False ─────────────────────
                 "dominant_emotion_score": round(dominant_score, 6),
                 "emotion_anger": scores.get("anger", 0.0),
                 "emotion_disgust": scores.get("disgust", 0.0),
