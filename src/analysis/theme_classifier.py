@@ -17,10 +17,11 @@ Theme taxonomy
 --------------
 Defined in config.analysis.theme_taxonomy. Default 12 classes:
 
-    love            loss            rebellion
-    identity        nostalgia       empowerment
-    heartbreak      party           spirituality
-    social_commentary  longing      resilience
+    — matches VALID_THEME_TAXONOMY in schemas.py:
+        love            heartbreak      party_celebration
+        identity        struggle        rebellion
+        wealth_success  friendship      nostalgia
+        self_reflection empowerment     unity
 
 Per-song outputs
 ----------------
@@ -57,10 +58,11 @@ Output schema
 See src/pipeline/schemas.py → layer2_themes_schema.
 
     song_id              : str
-    dominant_theme       : str
-    dominant_theme_score : float
-    theme_labels         : str    — pipe-delimited active themes
-    theme_<name>         : float  — one column per taxonomy theme
+    themes               : str   — pipe-delimited active themes (required by layer2_themes_schema)
+    dominant_theme       : str   — highest-scoring theme label (extra col)
+    dominant_theme_score : float — score of dominant theme (extra col)
+    theme_labels         : str   — alias of themes; retained for compatibility (extra col)
+    theme_<name>         : float — one column per taxonomy theme (extra cols)
 """
 
 from __future__ import annotations
@@ -76,7 +78,13 @@ from src.pipeline.config_loader import (
     sentinel_config_matches,
     write_sentinel,
 )
-from src.pipeline.schemas import layer2_themes_schema, validate
+from src.pipeline.schemas import (
+    VALID_THEME_TAXONOMY as _VALID_THEMES,
+)
+from src.pipeline.schemas import (
+    layer2_themes_schema,
+    validate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +258,7 @@ def _classify_batch(
     than as a mutually exclusive softmax — essential for multi-label output.
 
     Returns a list of score dicts, one per input text:
-        {"love": 0.82, "heartbreak": 0.61, "loss": 0.38, …}
+        {"love": 0.82, "heartbreak": 0.61, "struggle": 0.38, …}
 
     Empty strings are replaced with a single space to prevent errors.
     """
@@ -299,17 +307,24 @@ def _build_dataframe(
         dominant = max(scores, key=scores.get)
         dominant_score = scores[dominant]
 
+        from src.pipeline.schemas import (
+            VALID_THEME_TAXONOMY as _VALID_THEMES,  # top-level import preferred — see note below
+        )
+
         active_themes = sorted(
-            [t for t, s in scores.items() if s >= threshold],
+            [t for t, s in scores.items() if s >= threshold and t in _VALID_THEMES],
             key=lambda t: -scores[t],
         )
         theme_labels_str = "|".join(active_themes)
 
         row = {
+            # ── Required by layer2_themes_schema ───────────────────────────────
             "song_id": song_id,
+            "themes": theme_labels_str,  # renamed from theme_labels
+            # ── Extra cols — pass through strict=False ──────────────────────────
             "dominant_theme": dominant,
             "dominant_theme_score": round(dominant_score, 6),
-            "theme_labels": theme_labels_str,
+            "theme_labels": theme_labels_str,  # retained for downstream compat
         }
 
         # Add per-theme score columns
