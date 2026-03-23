@@ -44,26 +44,41 @@ from src.utils.identifiers import make_song_id
 # ── Canonical Fixture Songs ───────────────────────────────────────────────────
 
 FIXTURE_SONGS = [
-    {"artist": "The Beatles", "title": "Hey Jude", "year": 1968, "decade": "1960s*"},
+    {
+        "artist": "The Beatles",
+        "song_title": "Hey Jude",
+        "year": 1968,
+        "decade": "1960s*",
+    },
     {
         "artist": "Michael Jackson",
-        "title": "Billie Jean",
+        "song_title": "Billie Jean",
         "year": 1983,
         "decade": "1980s",
     },
     {
         "artist": "Nirvana",
-        "title": "Smells Like Teen Spirit",
+        "song_title": "Smells Like Teen Spirit",
         "year": 1991,
         "decade": "1990s",
     },
-    {"artist": "Beyonce", "title": "Crazy in Love", "year": 2003, "decade": "2000s"},
-    {"artist": "Billie Eilish", "title": "Bad Guy", "year": 2019, "decade": "2010s"},
+    {
+        "artist": "Beyonce",
+        "song_title": "Crazy in Love",
+        "year": 2003,
+        "decade": "2000s",
+    },
+    {
+        "artist": "Billie Eilish",
+        "song_title": "Bad Guy",
+        "year": 2019,
+        "decade": "2010s",
+    },
 ]
 
 # Pre-compute deterministic song_ids
 FIXTURE_SONG_IDS = [
-    make_song_id(s["artist"], s["title"], s["year"]) for s in FIXTURE_SONGS
+    make_song_id(s["artist"], s["song_title"], s["year"]) for s in FIXTURE_SONGS
 ]
 
 # Sample lyrics for fixture songs (short but sufficient for NLP testing)
@@ -156,13 +171,13 @@ def sample_songs_df() -> pd.DataFrame:
         rows.append(
             {
                 "song_id": FIXTURE_SONG_IDS[i],
-                "song_title": song["title"],
+                "song_title": song["song_title"],
                 "artist": song["artist"],
                 "year": song["year"],
                 "decade": song["decade"],
                 "lyrics_clean": FIXTURE_LYRICS[i],
                 "lyrics_verse_only": FIXTURE_LYRICS[i],
-                "token_count": len(FIXTURE_LYRICS[i].split()),
+                "chorus_token_count": len(FIXTURE_LYRICS[i].split()),
                 "lyrics_quality": "full",
                 "narrative_perspective": "first_person",
                 "has_section_tags": False,
@@ -275,6 +290,9 @@ def sample_layer4_df(
     df = sample_songs_df.merge(sample_sentiment_df, on="song_id", how="left")
     df = df.merge(sample_emotion_df, on="song_id", how="left")
     df = df.merge(sample_themes_df, on="song_id", how="left")
+    # Drop chorus_token_count from cleaned side before merging chorus_df
+    # to prevent _x/_y collision — chorus_schema is the authoritative source
+    df = df.drop(columns=["chorus_token_count"], errors="ignore")
     df = df.merge(sample_chorus_df, on="song_id", how="left")
 
     # Add Layer 4 contrast columns
@@ -306,7 +324,7 @@ def sample_cmi_df() -> pd.DataFrame:
             "scored_count": [115, 94, 100, 108, 103, 110, 40],
             "CMI_sentiment": [0.12, 0.08, -0.05, 0.15, 0.22, 0.18, None],
             "CMI_energy": [2.8, 3.1, 3.4, 3.2, 3.0, 3.5, None],
-            "dominant_emotion": ["joy", "joy", "anger", "joy", "neutral", "joy", None],
+            "emotional_tone": ["joy", "joy", "anger", "joy", "neutral", "joy", None],
             "dominant_jung_stage": [
                 "persona",
                 "shadow",

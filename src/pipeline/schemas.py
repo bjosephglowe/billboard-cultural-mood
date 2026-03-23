@@ -151,7 +151,7 @@ cleaned_schema = DataFrameSchema(
         "decade": Column(str, Check.isin(VALID_DECADE_LABELS), nullable=False),
         "lyrics_clean": Column(str, nullable=True),
         "lyrics_verse_only": Column(str, nullable=True),
-        "token_count": Column(int, Check.ge(0), nullable=False),
+        "chorus_token_count": Column(int, Check.ge(0), nullable=False),
         "lyrics_quality": Column(
             str,
             Check.isin(VALID_LYRICS_QUALITY),
@@ -302,7 +302,7 @@ layer4_schema = DataFrameSchema(
             Check.isin(VALID_LYRICS_QUALITY),
             nullable=False,
         ),
-        "token_count": Column(int, Check.ge(0), nullable=False),
+        "chorus_token_count": Column(int, Check.ge(0), nullable=False),
         "narrative_perspective": Column(
             str,
             Check.isin(VALID_NARRATIVE_PERSPECTIVES),
@@ -437,7 +437,7 @@ decade_cmi_schema = DataFrameSchema(
             Check.in_range(1.0, 5.0),
             nullable=True,
         ),
-        "dominant_emotion": Column(
+        "emotional_tone": Column(
             str,
             Check.isin(VALID_EMOTIONAL_TONES),
             nullable=True,
