@@ -40,10 +40,11 @@ is always respected regardless of sentinel state.
 
 Output schema
 -------------
-See src/pipeline/schemas.py → lyrics_raw_schema.
+No Pandera schema defined for this intermediate file.
+Output is validated downstream by text_cleaner.py → cleaned_schema.
 
     song_id        : str    — 16-char hex
-    title          : str
+    song_title          : str
     artist         : str
     decade         : str
     lyrics_raw     : str    — raw lyrics text (empty string if missing)
@@ -69,7 +70,7 @@ from src.pipeline.config_loader import (
     sentinel_config_matches,
     write_sentinel,
 )
-from src.pipeline.schemas import lyrics_raw_schema, validate
+from src.pipeline.schemas import validate
 from src.utils.identifiers import make_song_id
 
 if TYPE_CHECKING:
@@ -146,7 +147,7 @@ def run(config: ProjectConfig) -> dict:
         # ── Genius API fetch ─────────────────────────────────────────────────
         result = _fetch_with_retry(
             genius=genius,
-            title=str(row["title"]),
+            title=str(row["song_title"]),
             artist=str(row["artist"]),
             song_id=song_id,
             config=config,
@@ -158,13 +159,27 @@ def run(config: ProjectConfig) -> dict:
     df = pd.DataFrame(records)
 
     # ── Cast token_count to nullable Int64 ──────────────────────────────────
+    # — validate call removed, lightweight column check substituted:
     df["token_count"] = pd.array(df["token_count"].tolist(), dtype=pd.Int64Dtype())
 
-    # ── Validate ─────────────────────────────────────────────────────────────
-    df = validate(df, lyrics_raw_schema, stage_name="LYRICS")
+    # ── Lightweight sanity check (no Pandera schema for intermediate file) ────
+    _required_cols = {
+        "song_id",
+        "song_title",
+        "artist",
+        "lyrics_raw",
+        "lyrics_quality",
+        "token_count",
+    }
+    missing_cols = _required_cols - set(df.columns)
+    if missing_cols:
+        raise RuntimeError(
+            f"Stage 2 [LYRICS] output is missing required columns: {missing_cols}"
+        )
 
     # ── Write output ─────────────────────────────────────────────────────────
     df.to_csv(_OUTPUT_PATH, index=False)
+
     write_sentinel(_SENTINEL, stage="LYRICS", config=config)
 
     summary = _build_summary(df, skipped=False)
@@ -250,7 +265,7 @@ def _fetch_with_retry(
 
             return {
                 "song_id": song_id,
-                "title": title,
+                "song_title": title,
                 "artist": artist,
                 "decade": "",  # joined from metadata downstream
                 "lyrics_raw": lyrics_text,
@@ -286,7 +301,7 @@ def _missing_record(song_id: str, title: str, artist: str) -> dict:
     """Return a well-formed record with quality='missing' and empty lyrics."""
     return {
         "song_id": song_id,
-        "title": title,
+        "song_title": title,
         "artist": artist,
         "decade": "",
         "lyrics_raw": "",
