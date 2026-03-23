@@ -379,7 +379,7 @@ layer5_schema = DataFrameSchema(
         ),
         "psychological_theme": Column(str, nullable=True),
         "development_score": Column(
-            int,
+            "Int64",
             Check.in_range(1, 7),
             nullable=True,
         ),
