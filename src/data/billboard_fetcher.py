@@ -36,14 +36,14 @@ Output schema
 -------------
 See src/pipeline/schemas.py → metadata_schema.
 
-    song_id         : str   — 16-char hex (SHA-256 of artist+title)
-    title           : str
-    artist          : str
-    peak_position   : Int64
-    weeks_on_chart  : Int64
-    decade          : str   — e.g. "1980s"
-    first_chart_date: str   — ISO 8601 date of earliest chart appearance
-    chart_year      : Int64 — year of first_chart_date
+      song_id         : str   — 16-char hex (SHA-256 of artist+title)
+      song_title      : str
+      artist          : str
+      year            : Int64 — year of first_chart_date
+      decade          : str   — e.g. "1980s"
+      chart_rank      : Int64 — best (lowest) chart position seen
+      chart_weeks_on  : Int64 — longest chart run seen
+      first_chart_date: str   — ISO 8601 date of earliest chart appearance
 """
 
 from __future__ import annotations
@@ -321,20 +321,20 @@ def _build_canonical_dataframe(
     agg = (
         df.groupby("_key", sort=False)
         .agg(
-            title=("title", "first"),
+            song_title=("title", "first"),
             artist=("artist", "first"),
-            peak_position=("peak_position", "min"),
-            weeks_on_chart=("weeks_on_chart", "max"),
+            chart_rank=("peak_position", "min"),
+            chart_weeks_on=("weeks_on_chart", "max"),
             first_chart_date=("chart_date", "min"),
         )
         .reset_index(drop=True)
     )
 
     agg["first_chart_date"] = agg["first_chart_date"].dt.date.astype(str)
-    agg["chart_year"] = agg["first_chart_date"].str[:4].astype(int)
+    agg["year"] = agg["first_chart_date"].str[:4].astype(int)
 
     # ── Decade assignment ────────────────────────────────────────────────────
-    agg["decade"] = agg["chart_year"].apply(lambda y: _assign_decade(y, config))
+    agg["decade"] = agg["year"].apply(lambda y: _assign_decade(y, config))
 
     # Drop songs that fall outside all configured decade buckets
     outside = agg["decade"].isna()
@@ -356,28 +356,25 @@ def _build_canonical_dataframe(
 
     # ── Generate song IDs ────────────────────────────────────────────────────
     agg["song_id"] = agg.apply(
-        lambda row: make_song_id(row["artist"], row["title"]),
+        lambda row: make_song_id(row["artist"], row["song_title"]),
         axis=1,
     )
 
     # ── Cast numeric columns to nullable Int64 ───────────────────────────────
-    for col in ("peak_position", "weeks_on_chart", "chart_year"):
-        agg[col] = pd.array(
-            agg[col].tolist(),
-            dtype=pd.Int64Dtype(),
-        )
+    for col in ("chart_rank", "chart_weeks_on", "year"):
+        agg[col] = pd.array(agg[col].tolist(), dtype=pd.Int64Dtype())
 
     # ── Reorder columns to match schema ─────────────────────────────────────
     agg = agg[
         [
             "song_id",
-            "title",
+            "song_title",
             "artist",
-            "peak_position",
-            "weeks_on_chart",
+            "year",
             "decade",
+            "chart_rank",
+            "chart_weeks_on",
             "first_chart_date",
-            "chart_year",
         ]
     ]
 
