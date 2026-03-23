@@ -12,7 +12,7 @@ Detection tiers
 Every song is attempted in order. The first tier that succeeds
 assigns chorus_tier and chorus_text for that song. If all three
 tiers fail, chorus_text is set to the full lyrics and
-chorus_tier is set to "fallback_full".
+chorus_tier is set to "none".
 
 Tier 1 — Explicit tag detection
     Looks for section tags preserved in lyrics_clean by text_cleaner.py.
@@ -34,14 +34,14 @@ Tier 3 — GPT-4o fallback
     return only the chorus text.
     Batched at config.preprocessing.chorus_max_tokens tokens per request.
     Gated by OPENAI_API_KEY — if key is absent, tier 3 is skipped and
-    songs fall through to "fallback_full".
+    songs fall through to "none".
 
 chorus_tier values
 ------------------
     "tag"           — found via explicit [Chorus] tag
     "repetition"    — found via repetition analysis
-    "gpt4o"         — found via GPT-4o
-    "fallback_full" — no chorus detected; full lyrics used as proxy
+    "llm"         — found via GPT-4o
+    "none" — no chorus detected; full lyrics used as proxy
 
 Idempotency
 -----------
@@ -51,13 +51,11 @@ Output schema
 -------------
 See src/pipeline/schemas.py → chorus_schema.
 
-    song_id      : str
-    title        : str
-    artist       : str
-    decade       : str
-    chorus_text  : str   — extracted chorus (or full lyrics if fallback)
-    chorus_tier  : str   — detection method used
-    token_count  : Int64 — token count of chorus_text
+    song_id             : str
+    chorus_detected     : bool  — True if a chorus was identified
+    chorus_method       : str   — "tag" | "repetition" | "llm" | "none"
+    chorus_text         : str   — extracted chorus (or empty string if none)
+    chorus_token_count  : Int64 — token count of chorus_text
 """
 
 from __future__ import annotations
@@ -141,7 +139,7 @@ def run(config: ProjectConfig) -> dict:
         df = pd.read_csv(_OUTPUT_PATH)
         return {
             "songs_total": len(df),
-            "tier_counts": df["chorus_tier"].value_counts().to_dict(),
+            "tier_counts": df["chorus_method"].value_counts().to_dict(),
             "output_path": _OUTPUT_PATH,
             "skipped": True,
         }
@@ -161,7 +159,7 @@ def run(config: ProjectConfig) -> dict:
     if not gpt_available:
         logger.warning(
             "OPENAI_API_KEY not set — Tier 3 (GPT-4o) disabled. "
-            "Songs failing Tier 1 and 2 will use 'fallback_full'."
+            "Songs failing Tier 1 and 2 will use 'none'."
         )
 
     records: list[dict] = []
@@ -177,17 +175,17 @@ def run(config: ProjectConfig) -> dict:
         records.append(
             {
                 "song_id": row["song_id"],
-                "title": row["title"],
-                "artist": row["artist"],
-                "decade": row["decade"],
+                "chorus_detected": result["tier"] != "none",
+                "chorus_method": result["tier"],  # matches VALID_CHORUS_METHODS
                 "chorus_text": result["text"],
-                "chorus_tier": result["tier"],
-                "token_count": len(result["text"].split()),
+                "chorus_token_count": len(result["text"].split()),
             }
         )
 
     df = pd.DataFrame(records)
-    df["token_count"] = pd.array(df["token_count"].tolist(), dtype=pd.Int64Dtype())
+    df["chorus_token_count"] = pd.array(
+        df["chorus_token_count"].tolist(), dtype=pd.Int64Dtype()
+    )
 
     # ── Validate ─────────────────────────────────────────────────────────────
     df = validate(df, chorus_schema, stage_name="CHORUS")
@@ -196,7 +194,7 @@ def run(config: ProjectConfig) -> dict:
     df.to_csv(_OUTPUT_PATH, index=False)
     write_sentinel(_SENTINEL, stage="CHORUS", config=config)
 
-    tier_counts = df["chorus_tier"].value_counts().to_dict()
+    tier_counts = df["chorus_method"].value_counts().to_dict()
     logger.info(
         "Stage 4 [CHORUS] — complete. tier breakdown: %s → %s",
         tier_counts,
@@ -230,7 +228,7 @@ def _detect_chorus(
         tier : str  — detection method label
     """
     if not lyrics or not lyrics.strip():
-        return {"text": "", "tier": "fallback_full"}
+        return {"text": "", "tier": "none"}
 
     # ── Tier 1: Explicit tag ─────────────────────────────────────────────────
     tier1 = _tier1_tag(lyrics, tag_pattern)
@@ -246,10 +244,10 @@ def _detect_chorus(
     if gpt_available:
         tier3 = _tier3_gpt4o(lyrics, config)
         if tier3:
-            return {"text": tier3, "tier": "gpt4o"}
+            return {"text": tier3, "tier": "llm"}
 
     # ── Fallback: full lyrics ────────────────────────────────────────────────
-    return {"text": lyrics, "tier": "fallback_full"}
+    return {"text": lyrics, "tier": "none"}
 
 
 # ── Tier 1 ────────────────────────────────────────────────────────────────────
