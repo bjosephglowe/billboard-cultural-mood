@@ -42,19 +42,36 @@ RESET='\033[0m'
 
 # ── Argument Parsing ──────────────────────────────────────────────────────────
 
-for arg in "$@"; do
-  case $arg in
-    --force)           FORCE_FLAG="--force" ;;
-    --log-level)       shift; LOG_LEVEL="$1" ;;
-    --log-level=*)     LOG_LEVEL="${arg#*=}" ;;
-    --dry-run-only)    DRY_RUN_ONLY=true ;;
-    *)
-      echo -e "${RED}Unknown argument: $arg${RESET}"
-      echo "Usage: $0 [--force] [--log-level LEVEL] [--dry-run-only]"
-      exit 2
-      ;;
-  esac
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE_FLAG="--force"
+            shift
+            ;;
+        --log-level)
+            if [[ -z "${2:-}" ]]; then
+                echo -e "${RED}--log-level requires a value (e.g. DEBUG, INFO)${RESET}"
+                exit 2
+            fi
+            LOG_LEVEL="$2"
+            shift 2
+            ;;
+        --log-level=*)
+            LOG_LEVEL="${1#*=}"
+            shift
+            ;;
+        --dry-run-only)
+            DRY_RUN_ONLY=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown argument: $1${RESET}"
+            echo "Usage: $0 [--force] [--log-level LEVEL] [--dry-run-only]"
+            exit 2
+            ;;
+    esac
 done
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -273,18 +290,19 @@ validate_artifacts() {
   # Sentinel files
   section "SENTINEL VERIFICATION"
   declare -A SENTINELS=(
-    ["data/processed/.billboard_complete"]="BILLBOARD_FETCH"
-    ["data/processed/.lyrics_complete"]="LYRICS_FETCH"
-    ["data/processed/.cleaning_complete"]="TEXT_CLEANING"
-    ["data/processed/.chorus_complete"]="CHORUS_DETECTION"
-    ["data/analysis/.sentiment_complete"]="SENTIMENT_SCORING"
-    ["data/analysis/.emotion_complete"]="EMOTION_CLASSIFICATION"
-    ["data/analysis/.themes_complete"]="THEME_CLASSIFICATION"
-    ["data/analysis/.contrast_complete"]="CONTRAST_METRICS"
-    ["data/analysis/.jungian_complete"]="JUNGIAN_SCORING"
-    ["data/analysis/.cultural_metrics_complete"]="CULTURAL_METRICS"
-    ["outputs/.visualization_complete"]="VISUALIZATION"
+      ["data/processed/.billboard_complete"]="BILLBOARD_FETCH"
+      ["data/processed/.lyrics_complete"]="LYRICS_FETCH"
+      ["data/processed/.cleaning_complete"]="TEXT_CLEANING"
+      ["data/processed/.chorus_complete"]="CHORUS_DETECTION"
+      ["data/analysis/.sentiment_complete"]="SENTIMENT_SCORING"
+      ["data/analysis/.emotion_complete"]="EMOTION_CLASSIFICATION"
+      ["data/analysis/.themes_complete"]="THEME_CLASSIFICATION"
+      ["data/analysis/.contrast_complete"]="CONTRAST_METRICS"
+      ["data/analysis/.jungian_complete"]="JUNGIAN_SCORING"
+      ["data/analysis/.cmi_complete"]="CULTURAL_METRICS"
+      ["outputs/visualizations/.charts_complete"]="VISUALIZATION"
   )
+
 
   for sentinel in "${!SENTINELS[@]}"; do
     stage="${SENTINELS[$sentinel]}"
