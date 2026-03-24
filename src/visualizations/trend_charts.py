@@ -290,6 +290,8 @@ def _chart_emotion_distribution(layer4_df: pd.DataFrame) -> go.Figure:
         width=CHART_SIZE["width"],
         height=CHART_SIZE["height"],
         barmode="group",
+    )
+    fig.update_layout(
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -298,6 +300,7 @@ def _chart_emotion_distribution(layer4_df: pd.DataFrame) -> go.Figure:
             x=0.5,
         ),
     )
+
     fig.update_layout(
         title=dict(
             text=(
@@ -359,6 +362,8 @@ def _chart_jungian_distribution(layer4_df: pd.DataFrame) -> go.Figure:
         width=CHART_SIZE["width"],
         height=CHART_SIZE["height"],
         barmode="stack",
+    )
+    fig.update_layout(
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -367,6 +372,7 @@ def _chart_jungian_distribution(layer4_df: pd.DataFrame) -> go.Figure:
             x=0.5,
         ),
     )
+
     fig.update_layout(
         title=dict(
             text=(
