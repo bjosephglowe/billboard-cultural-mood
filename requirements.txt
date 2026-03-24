@@ -8,7 +8,7 @@ tqdm>=4.66.0
 
 # ── Data Ingestion ────────────────────────────────────────────────────────────
 requests>=2.32.0
-billboard.py>=7.1.0          # pip name: billboard.py | import name: billboard
+billboard.py==7.0.0          # pip name: billboard.py | import name: billboard — pinned; 7.1.0 hangs in CSS parser, direct __NEXT_DATA__ scraping used instead
 lyricsgenius>=3.0.1
 beautifulsoup4>=4.12
 

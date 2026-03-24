@@ -48,6 +48,7 @@ See src/pipeline/schemas.py → metadata_schema.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import date, timedelta
@@ -55,6 +56,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
+import requests
 
 from src.pipeline.config_loader import (
     ProjectConfig,
@@ -79,6 +81,15 @@ _SENTINEL = _PROJECT_ROOT / "data" / "processed" / ".billboard_complete"
 # ── Tuneable constants ────────────────────────────────────────────────────────
 _SLEEP_BETWEEN_WEEKS: float = 1.0  # seconds; override in tests via monkeypatch
 _MINIMUM_WEEK_COVERAGE: float = 0.80  # fraction of expected weeks required
+_REQUEST_TIMEOUT_SECONDS: int = 30  # hard timeout for each HTTP request
+_MAX_RETRIES: int = 3  # retry attempts per week on transient errors
+
+# ── Data source ───────────────────────────────────────────────────────────────
+_GITHUB_DATA_URL = (
+    "https://raw.githubusercontent.com/mhollingshead/"
+    "billboard-hot-100/main/date/{date}.json"
+)
+
 
 # ── Billboard chart fetch interval ───────────────────────────────────────────
 _CHART_DAY_OF_WEEK: int = 5  # Saturday — Billboard publishes Saturdays
@@ -237,46 +248,100 @@ def _generate_week_dates(config: ProjectConfig) -> list[date]:
 
 def _fetch_single_week(chart_date: date) -> list[dict]:
     """
-    Fetch one week of Billboard Hot 100 data.
+    Fetch one week of Billboard Hot 100 data from the mhollingshead/
+    billboard-hot-100 GitHub repository (updated daily).
+
+    URL pattern:
+        https://raw.githubusercontent.com/mhollingshead/
+        billboard-hot-100/main/date/YYYY-MM-DD.json
 
     Returns a list of raw record dicts with keys:
         title, artist, peak_position, weeks_on_chart, chart_date
 
     Raises
     ------
-    ImportError  : if billboard library is not installed
-    Exception    : any network or parsing error propagates to caller,
-                   which logs it and skips the week
+    requests.HTTPError  : 404 if the date has no chart (not a valid
+                          Billboard release date); other 4xx/5xx on
+                          GitHub outage
+    requests.Timeout    : if request exceeds _REQUEST_TIMEOUT_SECONDS
+    RuntimeError        : if JSON is valid but contains no entries
     """
-    try:
-        import billboard  # type: ignore[import]
-    except ImportError as exc:
-        raise ImportError(
-            "The 'billboard.py' package is required for Stage 1. "
-            "Install it with: pip install billboard.py"
-        ) from exc
+    url = _GITHUB_DATA_URL.format(date=chart_date.isoformat())
 
-    chart = billboard.ChartData(
-        "hot-100",
-        date=chart_date.isoformat(),
-        fetch=True,
-        timeout=30,
-    )
+    # ── Fetch with retry on transient errors ─────────────────────────────
+    response = None
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            response = requests.get(
+                url,
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as exc:
+            # 404 = date not a valid Billboard release date — not retryable
+            if exc.response is not None and exc.response.status_code == 404:
+                raise
+            last_exc = exc
+            logger.warning(
+                "HTTP error on attempt %d/%d for %s: %s — retrying …",
+                attempt,
+                _MAX_RETRIES,
+                chart_date.isoformat(),
+                exc,
+            )
+            time.sleep(attempt * 2)
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+        ) as exc:
+            last_exc = exc
+            logger.warning(
+                "Request error on attempt %d/%d for %s: %s — retrying …",
+                attempt,
+                _MAX_RETRIES,
+                chart_date.isoformat(),
+                exc,
+            )
+            time.sleep(attempt * 2)
 
+    if response is None:
+        raise RuntimeError(
+            f"All {_MAX_RETRIES} attempts failed for {chart_date.isoformat()}. "
+            f"Last error: {last_exc}"
+        )
+
+    # ── Parse JSON ────────────────────────────────────────────────────────
+    payload = response.json()  # {"date": "...", "data": [...]}
+    entries = payload.get("data", [])
+
+    if not entries:
+        raise RuntimeError(
+            f"Zero chart entries in JSON payload for {chart_date.isoformat()}."
+        )
+
+    # ── Map to internal schema ────────────────────────────────────────────
     records: list[dict] = []
-    for entry in chart:
+    for item in entries:
+        title = _normalise_text(item.get("song", ""))
+        artist = _normalise_text(item.get("artist", ""))
+        if not title or not artist:
+            continue
         records.append(
             {
-                "title": _normalise_text(entry.title),
-                "artist": _normalise_text(entry.artist),
-                "peak_position": int(entry.peakPos) if entry.peakPos else None,
-                "weeks_on_chart": int(entry.weeks) if entry.weeks else None,
+                "title": title,
+                "artist": artist,
+                "peak_position": item.get("peak_position"),
+                "weeks_on_chart": item.get("weeks_on_chart"),
                 "chart_date": chart_date.isoformat(),
             }
         )
 
     logger.debug(
-        "Fetched %d entries for week %s.", len(records), chart_date.isoformat()
+        "Fetched %d entries for week %s via GitHub data repo.",
+        len(records),
+        chart_date.isoformat(),
     )
     return records
 
