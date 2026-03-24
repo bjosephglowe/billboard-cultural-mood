@@ -79,7 +79,7 @@ _OUTPUT_PATH = _PROJECT_ROOT / "data" / "processed" / "song_metadata.csv"
 _SENTINEL = _PROJECT_ROOT / "data" / "processed" / ".billboard_complete"
 
 # ── Tuneable constants ────────────────────────────────────────────────────────
-_SLEEP_BETWEEN_WEEKS: float = 1.0  # seconds; override in tests via monkeypatch
+_SLEEP_BETWEEN_WEEKS: float = 0.5  # seconds; override in tests via monkeypatch
 _MINIMUM_WEEK_COVERAGE: float = 0.80  # fraction of expected weeks required
 _REQUEST_TIMEOUT_SECONDS: int = 30  # hard timeout for each HTTP request
 _MAX_RETRIES: int = 3  # retry attempts per week on transient errors
@@ -147,11 +147,18 @@ def run(config: ProjectConfig) -> dict:
     weeks_fetched = 0
     weeks_failed = 0
 
-    for chart_date in week_dates:
+    for i, chart_date in enumerate(week_dates, start=1):
         try:
             records = _fetch_single_week(chart_date)
             raw_records.extend(records)
             weeks_fetched += 1
+            logger.info(
+                "  [%d/%d] %s — %d entries",
+                i,
+                weeks_expected,
+                chart_date.isoformat(),
+                len(records),
+            )
             time.sleep(_SLEEP_BETWEEN_WEEKS)
         except Exception as exc:  # noqa: BLE001
             weeks_failed += 1
@@ -338,11 +345,6 @@ def _fetch_single_week(chart_date: date) -> list[dict]:
             }
         )
 
-    logger.debug(
-        "Fetched %d entries for week %s via GitHub data repo.",
-        len(records),
-        chart_date.isoformat(),
-    )
     return records
 
 
