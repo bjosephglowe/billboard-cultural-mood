@@ -423,7 +423,7 @@ def _build_canonical_dataframe(
 
     # ── Generate song IDs ────────────────────────────────────────────────────
     agg["song_id"] = agg.apply(
-        lambda row: make_song_id(row["artist"], row["song_title"]),
+        lambda row: make_song_id(row["artist"], row["song_title"], row["year"]),
         axis=1,
     )
 
