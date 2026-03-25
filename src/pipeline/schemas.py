@@ -151,7 +151,6 @@ cleaned_schema = DataFrameSchema(
         "decade": Column(str, Check.isin(VALID_DECADE_LABELS), nullable=False),
         "lyrics_clean": Column(str, nullable=True),
         "lyrics_verse_only": Column(str, nullable=True),
-        "chorus_token_count": Column(int, Check.ge(0), nullable=False),
         "lyrics_quality": Column(
             str,
             Check.isin(VALID_LYRICS_QUALITY),
