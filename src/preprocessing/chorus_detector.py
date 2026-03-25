@@ -155,7 +155,7 @@ def run(config: ProjectConfig) -> dict:
 
     # ── Determine GPT-4o availability ────────────────────────────────────────
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-    gpt_available = bool(openai_key and not openai_key.startswith("your_"))
+    gpt_available = False  # Tier 3 disabled — _tier3_gpt4o not implemented
     if not gpt_available:
         logger.warning(
             "OPENAI_API_KEY not set — Tier 3 (GPT-4o) disabled. "
