@@ -95,7 +95,7 @@ _OUTPUT_PATH = _PROJECT_ROOT / "data" / "analysis" / "layer2_themes.csv"
 _SENTINEL = _PROJECT_ROOT / "data" / "analysis" / ".themes_complete"
 
 # ── Model identifier ──────────────────────────────────────────────────────────
-_DEFAULT_MODEL = "facebook/bart-large-mnli"
+_DEFAULT_MODEL = "typeform/distilbert-base-uncased-mnli"
 
 # ── Column prefix for per-theme score columns ─────────────────────────────────
 _THEME_COL_PREFIX = "theme_"
