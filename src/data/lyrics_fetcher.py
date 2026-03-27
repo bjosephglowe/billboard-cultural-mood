@@ -178,7 +178,9 @@ def run(config: ProjectConfig) -> dict:
         )
 
     # ── Write output ─────────────────────────────────────────────────────────
-    df.to_csv(_OUTPUT_PATH, index=False)
+    df.to_csv(
+        _OUTPUT_PATH, index=False, quoting=1
+    )  # csv.QUOTE_ALL — safe for multiline lyrics
 
     write_sentinel(_SENTINEL, stage="LYRICS", config=config)
 
